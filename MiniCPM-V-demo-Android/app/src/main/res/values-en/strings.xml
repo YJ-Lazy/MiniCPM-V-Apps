@@ -9,6 +9,11 @@
     <string name="suggestion_1">What\'s in this photo?</string>
     <string name="suggestion_1_text">Write a poem on spring.</string>
     <string name="model_management">Model Management</string>
+    <string name="tts_import_ref">Import audio from device</string>
+    <string name="tts_import_ref_hint">Standard WAV only: 16-bit PCM, mono or stereo. Convert MP3 / AAC to WAV first.</string>
+    <string name="tts_ref_imported">Imported: %1$s · %2$.1f sec · %3$d KB</string>
+    <string name="tts_ref_import_success">Reference audio imported</string>
+    <string name="tts_ref_import_failed">Import failed: %1$s\nPlease use standard 16-bit PCM WAV audio</string>
     <string name="status_uninitialized">Not initialized — download or load a model</string>
     <string name="status_initializing">Initializing…</string>
     <string name="status_initialized">Initialized — load a model</string>

@@ -13,6 +13,7 @@ import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -39,6 +40,7 @@ class TtsActivity : AppCompatActivity() {
 
     private lateinit var etText: TextInputEditText
     private lateinit var btnRecord: MaterialButton
+    private lateinit var btnImportRef: MaterialButton
     private lateinit var btnPlayRef: MaterialButton
     private lateinit var btnClearRef: MaterialButton
     private lateinit var tvRefInfo: TextView
@@ -73,19 +75,30 @@ class TtsActivity : AppCompatActivity() {
     private var playbackRunnable: Runnable? = null
     private var generatedDurationMs = 0
 
+    // Copy selected audio into app-private storage. The native VoxCPM2 bridge
+    // currently accepts canonical PCM16 WAV files (mono or stereo).
+    private val importReferenceAudioLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) importReferenceAudio(uri)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createdWithLocale = LocaleManager.currentLanguage(this).tag
         setContentView(R.layout.activity_tts)
 
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         val root = findViewById<View>(android.R.id.content)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
-            val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val statusBar = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            val navigationBar = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             v.updatePadding(
-                left = 0, top = 0,
-                right = 0, bottom = ime.bottom
+                left = 0,
+                top = statusBar.top,
+                right = 0,
+                bottom = maxOf(navigationBar.bottom, ime.bottom)
             )
             insets
         }
@@ -98,6 +111,7 @@ class TtsActivity : AppCompatActivity() {
     private fun initViews() {
         etText = findViewById(R.id.et_tts_text)
         btnRecord = findViewById(R.id.btn_record)
+        btnImportRef = findViewById(R.id.btn_import_ref)
         btnPlayRef = findViewById(R.id.btn_play_ref)
         btnClearRef = findViewById(R.id.btn_clear_ref)
         btnPresetFemale = findViewById(R.id.btn_preset_female)
@@ -133,6 +147,10 @@ class TtsActivity : AppCompatActivity() {
             val steps = value.toInt()
             tvTimestepsValue.text = steps.toString()
             tvTimestepsHint.visibility = if (steps > 8) View.VISIBLE else View.GONE
+        }
+
+        btnImportRef.setOnClickListener {
+            importReferenceAudioLauncher.launch(arrayOf("audio/*"))
         }
 
         btnRecord.setOnClickListener {
@@ -342,6 +360,81 @@ class TtsActivity : AppCompatActivity() {
             referenceWavFile = null
         }
         updateRefAudioUI()
+    }
+
+    private fun importReferenceAudio(uri: android.net.Uri) {
+        if (isRecording) stopRecording()
+        lifecycleScope.launch(Dispatchers.IO) {
+            val imported = File(filesDir, "reference_audio/custom_${System.currentTimeMillis()}.wav")
+            try {
+                imported.parentFile?.mkdirs()
+                contentResolver.openInputStream(uri)?.use { input ->
+                    imported.outputStream().use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("无法读取所选音频")
+
+                val wavInfo = inspectReferenceWav(imported)
+                withContext(Dispatchers.Main) {
+                    referenceWavFile?.delete()
+                    referenceWavFile = imported
+                    tvRefInfo.visibility = View.VISIBLE
+                    tvRefInfo.text = getString(
+                        R.string.tts_ref_imported,
+                        imported.name,
+                        wavInfo.first / 1000.0,
+                        imported.length() / 1024
+                    )
+                    updateRefAudioUI()
+                    btnPresetFemale.isChecked = false
+                    btnPresetMale.isChecked = false
+                    Toast.makeText(this@TtsActivity, R.string.tts_ref_import_success, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                imported.delete()
+                Log.e(TAG, "Failed to import reference audio", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        this@TtsActivity,
+                        getString(R.string.tts_ref_import_failed, e.message ?: "未知错误"),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * Validate the exact WAV layout expected by omni_jni.cpp's current reader:
+     * 44-byte RIFF header, PCM format, 16-bit samples, mono/stereo, data at 44.
+     */
+    private fun inspectReferenceWav(file: File): Pair<Long, Int> {
+        java.io.RandomAccessFile(file, "r").use { raf ->
+            require(raf.length() >= 44L) { "音频文件太短" }
+            val header = ByteArray(44)
+            raf.readFully(header)
+            fun ascii(offset: Int, length: Int) = String(header, offset, length, Charsets.US_ASCII)
+            fun u16(offset: Int) = (header[offset].toInt() and 0xff) or
+                ((header[offset + 1].toInt() and 0xff) shl 8)
+            fun u32(offset: Int) = (header[offset].toLong() and 0xff) or
+                ((header[offset + 1].toLong() and 0xff) shl 8) or
+                ((header[offset + 2].toLong() and 0xff) shl 16) or
+                ((header[offset + 3].toLong() and 0xff) shl 24)
+
+            require(ascii(0, 4) == "RIFF" && ascii(8, 4) == "WAVE") { "目前只支持 WAV 音频" }
+            require(ascii(12, 4) == "fmt " && ascii(36, 4) == "data") {
+                "WAV 必须为标准 44 字节 PCM 格式，请先转换为普通 WAV"
+            }
+            require(u16(20) == 1) { "仅支持 PCM 编码 WAV" }
+            val channels = u16(22)
+            require(channels == 1 || channels == 2) { "仅支持单声道或双声道 WAV" }
+            val sampleRate = u32(24).toInt()
+            require(sampleRate in 8_000..192_000) { "WAV 采样率不受支持" }
+            require(u16(34) == 16) { "仅支持 16-bit PCM WAV" }
+            val dataBytes = minOf(u32(40), raf.length() - 44L)
+            require(dataBytes > 0L) { "WAV 中没有有效音频数据" }
+            val durationMs = dataBytes * 1000L / (sampleRate.toLong() * channels * 2L)
+            require(durationMs >= 500L) { "参考音频至少需要 0.5 秒" }
+            return durationMs to channels
+        }
     }
 
     private fun updateRefAudioUI() {

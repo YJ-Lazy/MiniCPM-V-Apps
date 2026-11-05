@@ -154,6 +154,12 @@
     <string name="tts_preset_female">默认女声</string>
     <string name="tts_preset_male">默认男声</string>
     <string name="tts_record">录制</string>
+    <string name="tts_import_ref">从设备导入音频</string>
+    <string name="tts_import_ref_hint">当前支持标准 WAV：PCM 16-bit，单声道或双声道。MP3 / AAC 请先转换为 WAV。</string>
+    <string name="tts_ref_imported">已导入：%1$s · %2$.1f秒 · %3$d KB</string>
+    <string name="tts_ref_import_success">参考音频已导入</string>
+    <string name="tts_ref_import_failed">导入失败：%1$s
+请使用标准 16-bit PCM WAV 音频</string>
     <string name="tts_stop_record">停止录制</string>
     <string name="tts_play_ref">试听</string>
     <string name="tts_clear_ref">清除</string>
