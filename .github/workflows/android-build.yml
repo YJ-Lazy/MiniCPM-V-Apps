@@ -45,19 +45,19 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           source = Path("llama.cpp-omni/src/llama-moe-slot.cpp")
           text = source.read_text()
 
-          old_apply = """#ifndef _WIN32
-                  std::lock_guard<std::mutex> lock(fd_mutex);
-                  for (const auto & kv : fds) {
-                      if (fcntl(kv.second, F_NOCACHE, on ? 1 : 0) != 0) {
-                          moe_log("F_NOCACHE 切换失败: %s", std::strerror(errno));
-                      }
-                  }
-          #endif"""
-          new_apply = """#ifdef __APPLE__
+          apply_pattern = re.compile(
+              r'#ifndef _WIN32\n\s*std::lock_guard<std::mutex> lock\(fd_mutex\);\n'
+              r'\s*for \(const auto & kv : fds\) \{\n'
+              r'\s*if \(fcntl\(kv.second, F_NOCACHE, on \? 1 : 0\) != 0\) \{\n'
+              r'\s*moe_log\("F_NOCACHE 切换失败: %s", std::strerror\(errno\)\);\n'
+              r'\s*\}\n\s*\}\n#endif'
+          )
+          apply_replacement = """#ifdef __APPLE__
                   std::lock_guard<std::mutex> lock(fd_mutex);
                   for (const auto & kv : fds) {
                       if (fcntl(kv.second, F_NOCACHE, on ? 1 : 0) != 0) {
@@ -67,26 +67,21 @@ jobs:
           #else
                   (void) on;
           #endif"""
+          text, apply_count = apply_pattern.subn(lambda _: apply_replacement, text, count=1)
 
-          old_open = """        const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-                  if (experts_nocache_desired() && fcntl(fd, F_NOCACHE, 1) != 0) {
-                      moe_log("F_NOCACHE 设置失败: %s", std::strerror(errno));
-                  }
-          #endif"""
-          new_open = """        const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-          #ifdef __APPLE__
-                  if (experts_nocache_desired() && fcntl(fd, F_NOCACHE, 1) != 0) {
-                      moe_log("F_NOCACHE 设置失败: %s", std::strerror(errno));
-                  }
-          #endif
-          #endif"""
+          open_pattern = re.compile(
+              r'(#else\n\s*const int fd = open\(path\.c_str\(\), O_RDONLY \| O_CLOEXEC\);\n)'
+              r'\s*if \(experts_nocache_desired\(\) && fcntl\(fd, F_NOCACHE, 1\) != 0\) \{\n'
+              r'\s*moe_log\("F_NOCACHE 设置失败: %s", std::strerror\(errno\)\);\n'
+              r'\s*\}\n#endif'
+          )
+          open_replacement = r'\1#ifdef __APPLE__\n        if (experts_nocache_desired() && fcntl(fd, F_NOCACHE, 1) != 0) {\n            moe_log("F_NOCACHE 设置失败: %s", std::strerror(errno));\n        }\n#endif\n#endif'
+          text, open_count = open_pattern.subn(lambda m: m.expand(open_replacement), text, count=1)
 
-          if old_apply not in text or old_open not in text:
-              raise SystemExit("Expected F_NOCACHE code was not found; refusing to patch an unexpected upstream version.")
-
-          text = text.replace(old_apply, new_apply, 1).replace(old_open, new_open, 1)
+          if apply_count != 1 or open_count != 1:
+              raise SystemExit(f"Expected exactly one F_NOCACHE patch site each; got apply={apply_count}, open={open_count}.")
           source.write_text(text)
-          print("Applied Android guard: F_NOCACHE is now compiled only on Apple platforms.")
+          print("Applied Android compatibility guard for Apple-only F_NOCACHE.")
           PY
 
       - name: Set up Gradle
