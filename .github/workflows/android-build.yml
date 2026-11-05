@@ -68,12 +68,12 @@ jobs:
                   (void) on;
           #endif"""
 
-          old_open = """          const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+          old_open = """        const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
                   if (experts_nocache_desired() && fcntl(fd, F_NOCACHE, 1) != 0) {
                       moe_log("F_NOCACHE 设置失败: %s", std::strerror(errno));
                   }
           #endif"""
-          new_open = """          const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+          new_open = """        const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
           #ifdef __APPLE__
                   if (experts_nocache_desired() && fcntl(fd, F_NOCACHE, 1) != 0) {
                       moe_log("F_NOCACHE 设置失败: %s", std::strerror(errno));
