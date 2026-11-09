@@ -1,36 +1,36 @@
-# MiniCPM-V-Apps — Repository Changes
+# MiniCPM-V-Apps — 本仓库修改说明
 
-**English** | [中文](README_zh.md)
+**中文** | [English](README_en.md)
 
-This fork keeps its project-specific changes and implementation notes here. The original project guides are preserved separately and remain available through the links below.
+本页面仅汇总当前仓库相对原项目新增或调整的内容，并提供原项目文档及本仓库实现文档的跳转入口。原项目 README 已完整保留在其他位置，没有删除原有说明。
 
-## Original project documentation
+## 原项目文档
 
-- [Original English README](docs/original/README.md) — complete upstream project guide, including platform setup, build instructions and model documentation.
-- [原项目中文 README](docs/original/README_zh.md) — 完整中文项目说明、平台构建步骤与模型文档。
-- [Download and installation guide](DOWNLOAD.md)
-- [中文下载与安装说明](DOWNLOAD_zh.md)
+- [原项目英文 README](docs/original/README.md) — 完整的平台介绍、构建步骤及模型说明。
+- [原项目中文 README](docs/original/README_zh.md) — 完整中文项目指南、平台构建步骤及模型说明。
+- [下载与安装说明（英文）](DOWNLOAD.md)
+- [下载与安装说明（中文）](DOWNLOAD_zh.md)
 
-## Changes in this repository
+## 本仓库修改内容
 
-### Android VoxCPM2 TTS
+### Android VoxCPM2 语音合成
 
-- Added an Android VoxCPM2 text-to-speech screen.
-- Added WAV audio export through Android's system file picker.
-- Added local API settings and a foreground service for on-device API access.
+- 增加 Android VoxCPM2 TTS 页面。
+- 增加 WAV 音频导出，通过 Android 系统文件选择器保存到用户指定位置。
+- 增加本地 API 设置入口，并通过前台服务运行 API。
 
-### Android local HTTP API
+### Android 本地 HTTP API
 
-- Added a loopback-only API at `http://127.0.0.1:8765` for applications running on the same Android device.
-- Added Bearer-token authentication and task-based speech generation.
-- Implemented speech generation, reference-audio cloning, task status and generated-audio retrieval endpoints.
-- Documented current API behavior, security boundaries and implementation limitations.
+- 增加仅监听本机回环地址的 API：`http://127.0.0.1:8765`，供同一台 Android 设备上的程序调用。
+- 增加 Bearer Token 身份验证及异步任务式语音生成。
+- 实现普通语音合成、参考音频克隆、任务状态查询和生成音频获取接口。
+- 补充 API 使用方式、安全边界及当前实现限制说明。
 
-## Implementation and usage
+## 实现与使用文档
 
-- [Android TTS, WAV export and local API guide](docs/ANDROID_LOCAL_API_PLAN.md)
-- [TTS screen source](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/TtsActivity.kt)
-- [Local API source](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/LocalApi.kt)
-- [Android build workflow](.github/workflows/android-build.yml)
+- [Android TTS、WAV 导出与本地 API 说明](docs/ANDROID_LOCAL_API_PLAN.md)
+- [TTS 页面源码](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/TtsActivity.kt)
+- [Local API 源码](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/LocalApi.kt)
+- [Android 构建工作流](.github/workflows/android-build.yml)
 
-> The original project documentation has not been discarded or replaced with a shortened copy. It is preserved in `docs/original/`; this root README is intentionally a change summary and navigation page.
+> 根目录 README 只承担“修改内容摘要 + 文档导航”的作用。原项目完整 README 已归档至 `docs/original/`，方便继续查阅，也避免覆盖原有项目说明。

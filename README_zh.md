@@ -1,6 +1,6 @@
 # MiniCPM-V-Apps — 本仓库修改说明
 
-[English](README.md) | **中文**
+**中文** | [English](README_en.md)
 
 本页面仅汇总当前仓库相对原项目新增或调整的内容，并提供原项目文档及本仓库实现文档的跳转入口。原项目 README 已完整保留在其他位置，没有删除原有说明。
 
@@ -33,4 +33,4 @@
 - [Local API 源码](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/LocalApi.kt)
 - [Android 构建工作流](.github/workflows/android-build.yml)
 
-> 根目录 README 现在只承担“修改内容摘要 + 文档导航”的作用。原项目完整 README 已归档至 `docs/original/`，方便继续查阅，也避免覆盖原有项目说明。
+> 根目录 README 只承担“修改内容摘要 + 文档导航”的作用。原项目完整 README 已归档至 `docs/original/`，方便继续查阅，也避免覆盖原有项目说明。
