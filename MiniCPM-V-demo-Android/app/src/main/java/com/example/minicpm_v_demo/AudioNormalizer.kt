@@ -30,8 +30,8 @@ object AudioNormalizer {
         require(source.length() in 1..(100L * 1024 * 1024)) { "音频文件为空或超过 100 MB" }
         val pcm = if (isWave(source)) readWave(source) else decode(source)
         require(pcm.rate in 8000..192000 && pcm.channels in 1..8 && pcm.samples.isNotEmpty()) { "音频参数无效" }
-        val duration = pcm.samples.size.toLong() * 1000 / pcm.rate / pcm.channels
-        require(duration in 500..300000) { "参考音频时长需为 0.5 秒至 5 分钟" }
+        val duration = pcm.samples.size.toLong() * 1000L / pcm.rate / pcm.channels
+        require(duration in 500L..300000L) { "参考音频时长需为 0.5 秒至 5 分钟" }
         val frames = pcm.samples.size / pcm.channels
         val count = (frames.toLong() * SAMPLE_RATE / pcm.rate).toInt()
         val mono = ShortArray(count)
@@ -87,7 +87,7 @@ object AudioNormalizer {
                 fmt==3 -> b.float
                 bits==8 -> ((b.get().toInt() and 255)-128)/128f
                 bits==16 -> b.short/32768f
-                bits==24 -> { val x=(b.get().toInt() and 255) or ((b.get().toInt() and 255) shl 8) or (b.get().toInt() shl 16); (if(x and 0x800000!=0) x or -0x1000000 else x)/8388608f }
+                bits==24 -> { val x=(b.get().toInt() and 255) or ((b.get().toInt() and 255) shl 8) or (b.get().toInt() shl 16); (if((x and 0x800000)!=0) x or -0x1000000 else x)/8388608f }
                 else -> b.int/2147483648f
             }).coerceIn(-1f,1f)
         }
