@@ -51,12 +51,22 @@
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
         <activity
+            android:name=".ApiSettingsActivity"
+            android:exported="false"
+            android:label="@string/local_api_settings"
+            android:parentActivityName=".TtsActivity" />
+        <activity
             android:name=".TtsActivity"
             android:exported="false"
             android:configChanges="locale|layoutDirection"
             android:label="@string/tts_title"
             android:parentActivityName=".MainActivity"
             android:windowSoftInputMode="adjustResize" />
+
+        <service
+            android:name=".LocalApiService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <service
             android:name=".ModelDownloadService"

@@ -83,6 +83,29 @@ class TtsActivity : AppCompatActivity() {
         if (uri != null) importReferenceAudio(uri)
     }
 
+    private val exportAudioLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("audio/wav")
+    ) { uri ->
+        val source = generatedWavPath?.let(::File)
+        if (uri != null && source != null && source.exists()) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    contentResolver.openOutputStream(uri)?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    } ?: throw IllegalStateException("无法创建目标文件")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@TtsActivity, R.string.tts_export_success, Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Audio export failed", e)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@TtsActivity, getString(R.string.tts_export_failed, e.message ?: ""), Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         createdWithLocale = LocaleManager.currentLanguage(this).tag
@@ -128,6 +151,17 @@ class TtsActivity : AppCompatActivity() {
         cardPlayback = findViewById(R.id.card_playback)
         btnPlayPause = findViewById(R.id.btn_play_pause)
         tvPlayTime = findViewById(R.id.tv_play_time)
+        findViewById<MaterialButton>(R.id.btn_export_audio).setOnClickListener {
+            val audio = generatedWavPath?.let(::File)
+            if (audio == null || !audio.exists() || audio.length() == 0L) {
+                Toast.makeText(this, R.string.tts_export_no_audio, Toast.LENGTH_SHORT).show()
+            } else {
+                exportAudioLauncher.launch("VoxCPM2_\${System.currentTimeMillis()}.wav")
+            }
+        }
+        findViewById<MaterialButton>(R.id.btn_api_settings).setOnClickListener {
+            startActivity(Intent(this, ApiSettingsActivity::class.java))
+        }
         sliderPlayback = findViewById(R.id.slider_playback)
 
         findViewById<ImageButton>(R.id.btn_model_manager).setOnClickListener {
@@ -783,9 +817,8 @@ class TtsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         stopPlayback()
-        if (isFinishing && ::engine.isInitialized) {
-            engine.destroy()
-        }
+        // The application-wide TtsEngine may still be used by LocalApiService.
+        // Keep the singleton alive when this screen closes.
         super.onDestroy()
     }
 }
