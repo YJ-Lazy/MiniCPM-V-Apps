@@ -402,11 +402,7 @@ class TtsActivity : AppCompatActivity() {
             val imported = File(filesDir, "reference_audio/custom_${System.currentTimeMillis()}.wav")
             try {
                 imported.parentFile?.mkdirs()
-                contentResolver.openInputStream(uri)?.use { input ->
-                    imported.outputStream().use { output -> input.copyTo(output) }
-                } ?: throw IllegalStateException("无法读取所选音频")
-
-                val wavInfo = inspectReferenceWav(imported)
+                val durationMs = AudioNormalizer.normalize(this@TtsActivity, uri, imported)
                 withContext(Dispatchers.Main) {
                     referenceWavFile?.delete()
                     referenceWavFile = imported
@@ -414,60 +410,25 @@ class TtsActivity : AppCompatActivity() {
                     tvRefInfo.text = getString(
                         R.string.tts_ref_imported,
                         imported.name,
-                        wavInfo.first / 1000.0,
+                        durationMs / 1000.0,
                         imported.length() / 1024
-                    )
+                    ) + " · 已转换为 PCM16/16kHz/单声道"
                     updateRefAudioUI()
                     btnPresetFemale.isChecked = false
                     btnPresetMale.isChecked = false
-                    Toast.makeText(this@TtsActivity, R.string.tts_ref_import_success, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@TtsActivity, "音频已自动转换并导入", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 imported.delete()
-                Log.e(TAG, "Failed to import reference audio", e)
+                Log.e(TAG, "Failed to import/normalize reference audio", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@TtsActivity,
-                        getString(R.string.tts_ref_import_failed, e.message ?: "未知错误"),
+                        "音频导入失败：${e.message ?: "不支持的格式"}",
                         Toast.LENGTH_LONG
                     ).show()
                 }
             }
-        }
-    }
-
-    /**
-     * Validate the exact WAV layout expected by omni_jni.cpp's current reader:
-     * 44-byte RIFF header, PCM format, 16-bit samples, mono/stereo, data at 44.
-     */
-    private fun inspectReferenceWav(file: File): Pair<Long, Int> {
-        java.io.RandomAccessFile(file, "r").use { raf ->
-            require(raf.length() >= 44L) { "音频文件太短" }
-            val header = ByteArray(44)
-            raf.readFully(header)
-            fun ascii(offset: Int, length: Int) = String(header, offset, length, Charsets.US_ASCII)
-            fun u16(offset: Int) = (header[offset].toInt() and 0xff) or
-                ((header[offset + 1].toInt() and 0xff) shl 8)
-            fun u32(offset: Int) = (header[offset].toLong() and 0xff) or
-                ((header[offset + 1].toLong() and 0xff) shl 8) or
-                ((header[offset + 2].toLong() and 0xff) shl 16) or
-                ((header[offset + 3].toLong() and 0xff) shl 24)
-
-            require(ascii(0, 4) == "RIFF" && ascii(8, 4) == "WAVE") { "目前只支持 WAV 音频" }
-            require(ascii(12, 4) == "fmt " && ascii(36, 4) == "data") {
-                "WAV 必须为标准 44 字节 PCM 格式，请先转换为普通 WAV"
-            }
-            require(u16(20) == 1) { "仅支持 PCM 编码 WAV" }
-            val channels = u16(22)
-            require(channels == 1 || channels == 2) { "仅支持单声道或双声道 WAV" }
-            val sampleRate = u32(24).toInt()
-            require(sampleRate in 8_000..192_000) { "WAV 采样率不受支持" }
-            require(u16(34) == 16) { "仅支持 16-bit PCM WAV" }
-            val dataBytes = minOf(u32(40), raf.length() - 44L)
-            require(dataBytes > 0L) { "WAV 中没有有效音频数据" }
-            val durationMs = dataBytes * 1000L / (sampleRate.toLong() * channels * 2L)
-            require(durationMs >= 500L) { "参考音频至少需要 0.5 秒" }
-            return durationMs to channels
         }
     }
 
