@@ -250,14 +250,22 @@ private class LocalApiServer(private val context: Context, private val port: Int
                         val bytes = try { Base64.decode(encoded, Base64.DEFAULT) } catch (_: Exception) {
                             reply(socket, 400, err("invalid base64")); return
                         }
-                        if (bytes.size !in 44..(8 * 1024 * 1024) ||
-                            String(bytes, 0, 4, Charsets.US_ASCII) != "RIFF" ||
-                            String(bytes, 8, 4, Charsets.US_ASCII) != "WAVE") {
-                            reply(socket, 400, err("reference must be standard PCM WAV under 8 MiB")); return
+                        if (bytes.isEmpty() || bytes.size > 8 * 1024 * 1024) {
+                            reply(socket, 400, err("reference audio must be between 1 byte and 8 MiB")); return
                         }
-                        File(context.filesDir, "api_audio/ref_${UUID.randomUUID()}.wav").apply {
+                        val source = File(context.filesDir, "api_audio/ref_${UUID.randomUUID()}.source").apply {
                             parentFile?.mkdirs(); writeBytes(bytes)
-                        }.absolutePath
+                        }
+                        val normalized = File(context.filesDir, "api_audio/ref_${UUID.randomUUID()}.wav")
+                        try {
+                            AudioNormalizer.normalize(source, normalized)
+                            normalized.absolutePath
+                        } catch (e: Exception) {
+                            source.delete()
+                            reply(socket, 400, err("unsupported reference audio: ${e.message ?: "decode failed"}")); return
+                        } finally {
+                            source.delete()
+                        }
                     } else null
                     val task = ApiTask(UUID.randomUUID().toString())
                     tasks[task.id] = task

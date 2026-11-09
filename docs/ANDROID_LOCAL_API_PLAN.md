@@ -25,7 +25,7 @@ The Android app now contains an initial on-device VoxCPM2 HTTP API implementatio
 | GET | `/health` | None | Returns service/model readiness |
 | GET | `/v1/models` | Bearer | Lists `voxcpm2` |
 | POST | `/v1/audio/speech` | Bearer | Queues text-to-speech |
-| POST | `/v1/audio/clone` | Bearer | Queues speech using Base64 reference WAV |
+| POST | `/v1/audio/clone` | Bearer | Queues speech using Base64 reference audio (WAV/MP3/AAC/FLAC/OGG/Opus where Android decoders support them) |
 | GET | `/v1/tasks/{id}` | Bearer | Returns `queued`, `running`, `completed`, or `failed` |
 | GET | `/v1/tasks/{id}/audio` | Bearer | Returns completed WAV bytes |
 
@@ -52,15 +52,16 @@ The Android app now contains an initial on-device VoxCPM2 HTTP API implementatio
 }
 ```
 
-The clone reference must be a RIFF/WAVE PCM16 file, at least a basic 44-byte WAV header, and no larger than 8 MiB. The TTS screen's reference-audio import follows the native reader's PCM16 mono/stereo constraint.
+The clone reference is Base64-encoded audio up to 8 MiB. Before JNI, the app normalizes supported input to a canonical 44-byte RIFF/WAVE PCM16 mono 16 kHz file. The UI accepts PCM WAV with extra RIFF chunks and PCM 8/16/24/32-bit or IEEE Float32 WAV, plus common compressed formats supported by the device's Android MediaCodec decoders (for example MP3, AAC/M4A, FLAC, OGG/Vorbis, Opus and AMR). Actual codec/container support can vary by Android version and device. Reference duration is limited to 0.5–300 seconds.
 
 ## Current implementation limits
 
 - Port is fixed at `8765`; the UI currently displays the port but does not offer port editing.
 - Request bodies are limited to 10 MiB; text input is limited to 5,000 characters.
-- Clone reference audio is supplied as Base64 JSON, not multipart form data or a remote file path.
+- Clone reference audio is supplied as Base64 JSON, not multipart form data or a remote file path; the API input limit remains 8 MiB.
 - The HTTP parser currently expects a `Content-Length` header; chunked transfer encoding is not implemented.
 - The task registry is in memory. Tasks are not restored after process death, and automatic task/audio retention cleanup is not yet implemented.
+- Imported audio is decoded/resampled/downmixed to PCM16 mono 16 kHz before the native reader; the API and UI share the same normalizer.
 - The API serializes inference through a mutex because the native engine is shared and must not run concurrent generations.
 - The endpoint is loopback HTTP, not TLS. Keep the token private; do not forward the port or bind the server to a public interface.
 - This is a local integration API with asynchronous task handling, not a complete OpenAI API compatibility layer. Parameters such as `voice` and `response_format` are not currently implemented.

@@ -17,6 +17,7 @@
 
 - 增加 Android VoxCPM2 TTS 页面。
 - 增加 WAV 音频导出，通过 Android 系统文件选择器保存到用户指定位置。
+- 参考音频导入增强：自动解析带附加 RIFF 块的 WAV，并将 PCM 8/16/24/32-bit、Float32 WAV 及 Android 设备支持解码的 MP3、AAC/M4A、FLAC、OGG/Vorbis、Opus、AMR 等格式统一转换为 PCM16、16 kHz、单声道标准 WAV。
 - 增加本地 API 设置入口，并通过前台服务运行 API。
 
 ### Android 本地 HTTP API
@@ -24,6 +25,7 @@
 - 增加仅监听本机回环地址的 API：`http://127.0.0.1:8765`，供同一台 Android 设备上的程序调用。
 - 增加 Bearer Token 身份验证及异步任务式语音生成。
 - 实现普通语音合成、参考音频克隆、任务状态查询和生成音频获取接口。
+- 本地 API 的参考音频 Base64 输入与 TTS 页面共用音频规范化流程。
 - 补充 API 使用方式、安全边界及当前实现限制说明。
 
 ## 实现与使用文档
