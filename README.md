@@ -39,6 +39,14 @@ All three demos share the same `llama.cpp-omni` submodule (branch `ios-omni`) at
 >
 > This only pulls a single commit of the `ios-omni` branch (~tens of MB) instead of the full llama.cpp-omni fork history. Developers who need to push to `tc-mb/llama.cpp-omni:ios-omni` can run `git fetch --unshallow` inside the submodule to lift the shallow restriction.
 
+## Android VoxCPM2 TTS quick links
+
+- [Android TTS usage and WAV export](#android-voxcpm2-tts-and-wav-export)
+- [Local HTTP API setup and endpoint reference](#android-voxcpm2-local-http-api)
+- [API implementation notes and limitations](docs/ANDROID_LOCAL_API_PLAN.md)
+- [Android TTS screen source](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/TtsActivity.kt)
+- [Local API implementation](MiniCPM-V-demo-Android/app/src/main/java/com/example/minicpm_v_demo/LocalApi.kt)
+
 The README is organised in two parts:
 
 * **Part 1 — Platform setup**: how to build and run the demo on iOS, Android and HarmonyOS.
@@ -161,6 +169,74 @@ cd MiniCPM-V-demo-Android
 Or open `MiniCPM-V-demo-Android/` directly in Android Studio and click Run.
 
 The first launch will download the GGUF model files into the app's external storage. You can also sideload model files manually via `adb push` — see in-app **Model Manager** for the expected directory layout.
+
+#### Android VoxCPM2 TTS and WAV export
+
+The Android app includes a local VoxCPM2 text-to-speech screen.
+
+1. Download the two VoxCPM2 model files listed in [§2.7](#27-voxcpm2-gguf-files) using Model Manager.
+2. Select VoxCPM2; the app opens the TTS screen.
+3. Enter text, choose a preset/reference voice, adjust CFG and inference timesteps, then tap **Generate**.
+4. When playback controls appear, tap **Export WAV audio**. Android's system file picker lets you choose the destination and filename. The exported file is WAV.
+
+Reference audio import currently accepts standard PCM 16-bit mono/stereo WAV. MP3/AAC and arbitrary WAV encodings are not supported by the native reference-audio reader.
+
+#### Android VoxCPM2 local HTTP API
+
+The Android build also includes an optional on-device HTTP API for applications running on the **same Android device**. Open the TTS screen's **Local API** entry, copy the generated Bearer token, and tap **Start API service**. A persistent notification is shown while the service is active; use the in-app Stop control or the notification action to stop it.
+
+- Base URL: `http://127.0.0.1:8765`
+- Bind address: `127.0.0.1` only; it is not exposed to other devices on the LAN.
+- Authentication: `Authorization: Bearer YOUR_TOKEN` is required for all endpoints except `GET /health`.
+- Model: `voxcpm2`; model files must be present and load successfully.
+- Requests and generated WAV files are handled locally. No cloud inference is involved.
+
+**Available endpoints**
+
+| Method | Path | Authentication | Description |
+| --- | --- | --- | --- |
+| `GET` | `/health` | No | Service/model readiness |
+| `GET` | `/v1/models` | Bearer token | Lists the local VoxCPM2 model |
+| `POST` | `/v1/audio/speech` | Bearer token | Queues text-to-speech generation |
+| `POST` | `/v1/audio/clone` | Bearer token | Queues generation using Base64 reference WAV |
+| `GET` | `/v1/tasks/{id}` | Bearer token | Reads task status |
+| `GET` | `/v1/tasks/{id}/audio` | Bearer token | Downloads the completed WAV |
+
+**Speech request example**
+
+```bash
+curl -X POST http://127.0.0.1:8765/v1/audio/speech \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"voxcpm2","input":"你好，欢迎使用本地语音合成。","cfg_value":2.0,"timesteps":5}'
+```
+
+The server returns HTTP `202` with a task ID. Poll the returned `status_url` (or `/v1/tasks/{id}`) until the task is `completed`, then download its `audio_url`:
+
+```bash
+curl http://127.0.0.1:8765/v1/tasks/TASK_ID \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+curl http://127.0.0.1:8765/v1/tasks/TASK_ID/audio \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  --output speech.wav
+```
+
+**Voice-cloning request example**
+
+The clone endpoint accepts a standard PCM16 WAV reference clip as Base64 in JSON. Keep the encoded source WAV below the current 8 MiB limit.
+
+```json
+{
+  "model": "voxcpm2",
+  "input": "这是一段声音克隆测试。",
+  "cfg_value": 2.0,
+  "timesteps": 5,
+  "reference_audio_base64": "BASE64_ENCODED_PCM16_WAV"
+}
+```
+
+Send that body to `POST /v1/audio/clone` with the same Bearer-token and JSON headers. The API currently uses a fixed port (`8765`), returns task IDs for generation, and expects ordinary HTTP requests with a `Content-Length` header. It is a local integration API, not a full drop-in OpenAI API server. See [the implementation notes](docs/ANDROID_LOCAL_API_PLAN.md) for current constraints and validation status.
 
 ### 1.3 HarmonyOS Demo
 

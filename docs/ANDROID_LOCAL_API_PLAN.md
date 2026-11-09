@@ -1,52 +1,77 @@
-# Android Local VoxCPM2 API Implementation Plan
+# Android VoxCPM2 Local API — implementation notes
 
-This document records the next implementation phase. The current patch only adds reference-audio import and fixes TTS screen system-bar insets; it does not start an HTTP server yet.
+The Android app now contains an initial on-device VoxCPM2 HTTP API implementation and WAV export from the TTS screen. This document describes the implemented behavior and distinguishes it from future work.
 
-## Goals
+## User-facing features
 
-- Expose the already-loaded VoxCPM2 engine to other apps on the same Android device.
-- Keep inference fully on-device; no cloud service or Python runtime.
-- Reuse the singleton `TtsEngine` and its single-thread inference dispatcher.
-- Preserve the existing interactive TTS screen and recording/preset workflows.
+- TTS screen: generate speech with the on-device VoxCPM2 engine and play the resulting WAV.
+- WAV export: use Android's Storage Access Framework save dialog to copy the generated WAV to a user-selected location.
+- Local API settings: open from the TTS screen, display/copy/regenerate a random Bearer token, start/stop the API foreground service.
+- The API shares the app's `TtsEngine`; it does not create a second native model runtime.
 
-## Proposed architecture
+## Runtime and security
 
-`LocalApiForegroundService` -> `LocalApiServer` -> `ApiTaskManager` -> shared `TtsEngine` -> JNI / llama.cpp-omni.
+- Base URL: `http://127.0.0.1:8765`.
+- The server binds explicitly to IPv4 loopback. It is intended for clients on the same Android device, not LAN clients.
+- `GET /health` is unauthenticated for readiness checks. All other routes require `Authorization: Bearer <token>`.
+- The token is stored in app-private preferences. Regenerating it invalidates the token currently held by an already-running server only after that server is restarted; restart the API service after rotating the token.
+- The service runs in the foreground with a persistent notification and a Stop action.
+- Generated audio and temporary clone reference WAV files are stored under app-private files.
 
-The service owns API lifecycle and a partial wake lock while a generation task is active. The server must not create or initialize a second `TtsEngine` instance. The API task manager serializes inference and stores generated WAV files in app-private storage.
+## HTTP endpoints
 
-## Initial endpoints
+| Method | Path | Authentication | Behavior |
+|---|---|---|---|
+| GET | `/health` | None | Returns service/model readiness |
+| GET | `/v1/models` | Bearer | Lists `voxcpm2` |
+| POST | `/v1/audio/speech` | Bearer | Queues text-to-speech |
+| POST | `/v1/audio/clone` | Bearer | Queues speech using Base64 reference WAV |
+| GET | `/v1/tasks/{id}` | Bearer | Returns `queued`, `running`, `completed`, or `failed` |
+| GET | `/v1/tasks/{id}/audio` | Bearer | Returns completed WAV bytes |
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/health` | Service and model readiness |
-| GET | `/v1/models` | Report `voxcpm2` when available |
-| POST | `/v1/audio/speech` | Generate WAV from text |
-| POST | `/v1/audio/clone` | Generate WAV using uploaded/reference audio |
-| GET | `/v1/tasks/{id}` | Query task state |
-| GET | `/v1/tasks/{id}/audio` | Retrieve generated WAV |
+### Speech JSON
 
-`/v1/audio/speech` should accept OpenAI-style `model`, `input`, `voice`, and `response_format`, plus VoxCPM2-specific `cfg_value` and `timesteps`. Long generation should return a task ID rather than hold an HTTP connection open indefinitely. A later compatibility mode may return the WAV directly for short requests.
+```json
+{
+  "model": "voxcpm2",
+  "input": "Hello from the local VoxCPM2 API.",
+  "cfg_value": 2.0,
+  "timesteps": 5
+}
+```
 
-## Security and Android constraints
+### Clone JSON
 
-- Default bind address: `127.0.0.1` only. Do not bind `0.0.0.0` by default.
-- Require a randomly generated Bearer token; show/copy/regenerate it in the app's API settings.
-- Add request body size limits, text length limits, task queue limits, and per-request timeouts.
-- Do not expose arbitrary filesystem paths. Accept reference audio as multipart upload or a managed reference-audio ID.
-- Add a foreground service notification while API mode is enabled, with an explicit Stop action.
-- Check Android background-start restrictions and notification permission on Android 13+.
-- Use one inference queue because the current native runtime is a singleton and is not safe for parallel generation.
+```json
+{
+  "model": "voxcpm2",
+  "input": "Text to speak in the reference voice.",
+  "cfg_value": 2.0,
+  "timesteps": 5,
+  "reference_audio_base64": "BASE64_ENCODED_PCM16_WAV"
+}
+```
 
-## Implementation sequence
+The clone reference must be a RIFF/WAVE PCM16 file, at least a basic 44-byte WAV header, and no larger than 8 MiB. The TTS screen's reference-audio import follows the native reader's PCM16 mono/stereo constraint.
 
-1. Add API settings UI (enable/disable, port, token, endpoint display, copy buttons).
-2. Add the foreground service and lifecycle-safe shared engine access.
-3. Add a lightweight embedded HTTP server and strict JSON/multipart parsing.
-4. Add task queue, task status, generated-file retention and cleanup.
-5. Add endpoint tests and a sample client (curl/Kotlin).
-6. Validate on a physical ARM64 phone: app backgrounding, screen-off behavior, repeated requests, memory, temperature, and recovery after service restart.
+## Current implementation limits
 
-## Current native audio constraint
+- Port is fixed at `8765`; the UI currently displays the port but does not offer port editing.
+- Request bodies are limited to 10 MiB; text input is limited to 5,000 characters.
+- Clone reference audio is supplied as Base64 JSON, not multipart form data or a remote file path.
+- The HTTP parser currently expects a `Content-Length` header; chunked transfer encoding is not implemented.
+- The task registry is in memory. Tasks are not restored after process death, and automatic task/audio retention cleanup is not yet implemented.
+- The API serializes inference through a mutex because the native engine is shared and must not run concurrent generations.
+- The endpoint is loopback HTTP, not TLS. Keep the token private; do not forward the port or bind the server to a public interface.
+- This is a local integration API with asynchronous task handling, not a complete OpenAI API compatibility layer. Parameters such as `voice` and `response_format` are not currently implemented.
 
-`omni_jni.cpp` currently reads reference WAV files using a minimal 44-byte header parser and 16-bit PCM samples. The import UI therefore validates standard PCM16 mono/stereo WAV files. Supporting MP3/AAC or WAV files with extended chunks requires adding a proper Android media decoder or a robust WAV parser before claiming broad audio-format support.
+## Build and device validation
+
+Build the Android debug APK from the repository root:
+
+```bash
+cd MiniCPM-V-demo-Android
+./gradlew assembleDebug
+```
+
+A successful CI build confirms compilation and APK packaging only. Runtime validation still needs to cover model loading, normal speech generation, clone generation with a real PCM16 WAV, task polling, WAV download, token rotation, foreground-service lifecycle, background execution, and device-specific memory/thermal behavior.
